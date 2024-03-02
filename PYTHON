@@ -1,6 +1,8 @@
+import argparse
+import logging
+import re
 import requests
 from bs4 import BeautifulSoup
-import re
 
 def scrape_rumble_videos(url, user_agent):
     video_urls = []
@@ -9,24 +11,36 @@ def scrape_rumble_videos(url, user_agent):
         response = requests.get(url, headers=headers)
         response.raise_for_status()  # Raise an exception for 4xx and 5xx status codes
         soup = BeautifulSoup(response.content, 'html.parser')
-        pattern = re.compile(r'"video_url":"(.*?)"')
-        scripts = soup.find_all('script', string=pattern)
-        for script in scripts:
-            match = pattern.search(script.string)
-            if match:
-                video_urls.append(match.group(1))
+        scripts = soup.find_all('script', string=re.compile(r'window.__INITIAL_STATE__'))
+        if scripts:
+            json_data = scripts[0].string.strip().split('\n')[1].strip()
+            # Extract video URLs from JSON data
+            video_urls = re.findall(r'"url":"(.*?)"', json_data)
     except requests.RequestException as e:
-        print(f"Error fetching URL: {e}")
+        logging.error(f"Error fetching URL: {e}")
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"Error: {e}")
     return video_urls
 
 def main():
-    rumble_url = 'https://rumble.com/c/cute-animals/'
-    user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36'
-    video_urls = scrape_rumble_videos(rumble_url, user_agent)
-    for idx, video_url in enumerate(video_urls, start=1):
-        print(f"\033[42m Video {idx}: {video_url} \033[0m")  # Green background
+    # Setup command-line arguments
+    parser = argparse.ArgumentParser(description="Rumble Video Downloader")
+    parser.add_argument("url", help="URL of the Rumble page to scrape")
+    parser.add_argument("--user-agent", default="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36",
+                        help="User agent string to use for the HTTP request")
+    args = parser.parse_args()
+
+    # Scrape Rumble for video URLs
+    logging.info("Scraping Rumble for video URLs...")
+    video_urls = scrape_rumble_videos(args.url, args.user_agent)
+
+    # Print the scraped video URLs
+    if video_urls:
+        for idx, video_url in enumerate(video_urls, start=1):
+            print(f"Video {idx}: {video_url}")
+        logging.info(f"Found {len(video_urls)} video URLs.")
+    else:
+        logging.info("No video URLs found.")
 
 if __name__ == "__main__":
     main()
